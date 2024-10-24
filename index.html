@@ -4,9 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Modifier les revenus quotidiens</title>
-    <script type="module" src="https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js"></script>
-    <script type="module" src="https://www.gstatic.com/firebasejs/9.0.0/firebase-auth.js"></script>
-    <script type="module" src="https://www.gstatic.com/firebasejs/9.0.0/firebase-database.js"></script>
+    <!-- Import des dernières versions de Firebase -->
+    <script type="module" src="https://www.gstatic.com/firebasejs/9.21.0/firebase-app.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/9.21.0/firebase-auth.js"></script>
+    <script type="module" src="https://www.gstatic.com/firebasejs/9.21.0/firebase-database.js"></script>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -20,33 +21,42 @@
             color: #2c3e50;
         }
         .container {
-            max-width: 600px;
+            max-width: 800px;
             margin: 0 auto;
             padding: 20px;
             background-color: white;
             border-radius: 8px;
             box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
         }
-        label {
-            display: block;
-            margin-bottom: 8px;
-            font-weight: bold;
+        .search-bar {
+            margin-bottom: 20px;
         }
-        select, input {
+        input[type="text"] {
             width: 100%;
             padding: 10px;
             margin-bottom: 20px;
             border: 1px solid #ddd;
             border-radius: 4px;
         }
-        button {
+        table {
             width: 100%;
-            padding: 10px;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+        th, td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        button {
+            padding: 8px 12px;
             background-color: #3498db;
             color: white;
             border: none;
             border-radius: 4px;
-            font-size: 16px;
             cursor: pointer;
         }
         button:hover {
@@ -62,10 +72,26 @@
 <body>
     <div class="container">
         <h1>Modifier les revenus quotidiens des utilisateurs</h1>
-        <div>
-            <label for="userId">Sélectionnez un utilisateur:</label>
-            <select id="userId"></select>
+
+        <!-- Barre de recherche -->
+        <div class="search-bar">
+            <input type="text" id="searchUser" placeholder="Rechercher un utilisateur par email..." />
         </div>
+
+        <!-- Tableau des utilisateurs -->
+        <table id="userTable">
+            <thead>
+                <tr>
+                    <th>Email</th>
+                    <th>Statut VIP</th>
+                    <th>Revenus quotidiens</th>
+                    <th>Action</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+
+        <!-- Formulaire de mise à jour -->
         <div>
             <label for="vipStatus">Statut VIP:</label>
             <input type="number" id="vipStatusInput" placeholder="Entrez le nouveau statut VIP" />
@@ -74,14 +100,14 @@
             <label for="dailyEarnings">Revenus quotidiens:</label>
             <input type="number" id="dailyEarnings" placeholder="Entrez les nouveaux revenus quotidiens" />
         </div>
-        <button id="updateButton">Mettre à jour les informations</button>
+        <button id="updateButton" disabled>Mettre à jour les informations</button>
         <div id="message"></div>
     </div>
 
     <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-app.js";
-        import { getAuth, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-auth.js";
-        import { getDatabase, ref, onValue, get, update } from "https://www.gstatic.com/firebasejs/9.0.0/firebase-database.js";
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-app.js";
+        import { getAuth } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-auth.js";
+        import { getDatabase, ref, onValue, update } from "https://www.gstatic.com/firebasejs/9.21.0/firebase-database.js";
 
         const firebaseConfig = {
             apiKey: "AIzaSyBFREc4PyC6VTYgXN3eEV9_AYpVo6nkyco",
@@ -93,41 +119,63 @@
             appId: "1:52732576686:web:70f5d27fc58bc5bd31fe3f"
         };
 
-        // Initialisation Firebase
         const app = initializeApp(firebaseConfig);
-        const auth = getAuth();
         const database = getDatabase();
 
-        // Récupère tous les utilisateurs
+        // Variables globales
+        let selectedUserId = null;
+
+        // Récupère les utilisateurs depuis Firebase et les affiche dans le tableau
         function fetchUsers() {
             const usersRef = ref(database, 'users');
             onValue(usersRef, (snapshot) => {
                 const users = snapshot.val();
-                const userSelect = document.getElementById("userId");
-                userSelect.innerHTML = ''; // Vider les options existantes
+                const userTable = document.querySelector("#userTable tbody");
+                userTable.innerHTML = ''; // Vider les utilisateurs existants
+
                 for (const userId in users) {
-                    const option = document.createElement("option");
-                    option.value = userId;
-                    option.textContent = `${users[userId].email} (VIP: ${users[userId].vipStatus || '0'})`;
-                    userSelect.appendChild(option);
+                    const user = users[userId];
+                    const row = document.createElement("tr");
+                    row.innerHTML = `
+                        <td>${user.email}</td>
+                        <td>${user.vipStatus || '0'}</td>
+                        <td>${user.dailyEarnings || '0'}</td>
+                        <td><button onclick="selectUser('${userId}')">Modifier</button></td>
+                    `;
+                    userTable.appendChild(row);
                 }
             });
         }
 
-        // Met à jour le statut VIP et les revenus quotidiens
-        function updateUserEarnings() {
-            const userId = document.getElementById("userId").value;
-            const newDailyEarnings = document.getElementById("dailyEarnings").value;
-            const newVipStatus = document.getElementById("vipStatusInput").value;
+        // Sélectionne un utilisateur et remplit le formulaire avec ses informations
+        window.selectUser = function(userId) {
+            selectedUserId = userId;
+            const userRef = ref(database, `users/${userId}`);
+            onValue(userRef, (snapshot) => {
+                const user = snapshot.val();
+                document.getElementById("vipStatusInput").value = user.vipStatus || '';
+                document.getElementById("dailyEarnings").value = user.dailyEarnings || '';
+                document.getElementById("updateButton").disabled = false;
+            });
+        };
 
-            if (userId && (newDailyEarnings || newVipStatus)) {
-                const userRef = ref(database, `users/${userId}`);
+        // Met à jour les revenus et le statut VIP de l'utilisateur sélectionné
+        function updateUserEarnings() {
+            const newVipStatus = document.getElementById("vipStatusInput").value;
+            const newDailyEarnings = document.getElementById("dailyEarnings").value;
+
+            if (selectedUserId && (newVipStatus || newDailyEarnings)) {
+                const userRef = ref(database, `users/${selectedUserId}`);
                 const updates = {};
-                if (newDailyEarnings) updates.dailyEarnings = Number(newDailyEarnings);
                 if (newVipStatus) updates.vipStatus = Number(newVipStatus);
+                if (newDailyEarnings) updates.dailyEarnings = Number(newDailyEarnings);
 
                 update(userRef, updates).then(() => {
                     document.getElementById("message").textContent = "Les informations ont été mises à jour avec succès.";
+                    document.getElementById("vipStatusInput").value = '';
+                    document.getElementById("dailyEarnings").value = '';
+                    selectedUserId = null;
+                    document.getElementById("updateButton").disabled = true;
                 }).catch((error) => {
                     console.error("Erreur lors de la mise à jour :", error);
                     document.getElementById("message").textContent = "Erreur lors de la mise à jour.";
@@ -137,7 +185,21 @@
             }
         }
 
-        // Événements
+        // Recherche des utilisateurs par email
+        document.getElementById("searchUser").addEventListener("input", function() {
+            const searchValue = this.value.toLowerCase();
+            const rows = document.querySelectorAll("#userTable tbody tr");
+            rows.forEach(row => {
+                const email = row.querySelector("td").textContent.toLowerCase();
+                if (email.includes(searchValue)) {
+                    row.style.display = "";
+                } else {
+                    row.style.display = "none";
+                }
+            });
+        });
+
+        // Événement de mise à jour
         document.getElementById("updateButton").addEventListener("click", updateUserEarnings);
 
         // Appel initial
